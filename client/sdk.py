@@ -18,6 +18,31 @@ from typing import List, Any
 
 try:
     # Pyfhel is a Python wrapper around the Microsoft SEAL library.  Importing
+def encrypt_fixed_point(self, values: List[float], scale_factor: int = 10000) -> List['PyCtxt']:
+        """
+        Encrypt a list of real numbers as fixed-point integers.
+
+        This helper multiplies each value by a scale factor and converts to
+        an integer before encryption. For CKKS scheme the scale factor is ignored
+        and fractional encryption is used.
+        """
+        if self.he.is_scheme("CKKS"):
+            return [self.he.encryptFrac([v]) for v in values]
+        # BFV scheme: scale values and encrypt as integers
+        scaled_ints = [int(round(v * scale_factor)) for v in values]
+        return [self.he.encryptInt(val) for val in scaled_ints]
+
+    def decrypt_fixed_point(self, ciphertexts: List['PyCtxt'], scale_factor: int = 10000) -> List[float]:
+        """
+        Decrypt fixed-point ciphertexts back to floats.
+
+        For CKKS scheme returns decrypted fractional values.
+        """
+        if self.he.is_scheme("CKKS"):
+            return [float(self.he.decryptFrac(ctxt)[0]) for ctxt in ciphertexts]
+        ints = [self.he.decryptInt(ctxt) for ctxt in ciphertexts]
+        return [val / scale_factor for val in ints]
+
     # it here allows clients to call FHEClient only when the dependency is
     # available. When Pyfhel is not installed, the module still loads but
     # FHEClient will raise at runtime.
