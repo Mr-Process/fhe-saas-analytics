@@ -89,3 +89,25 @@ class FHEEvaluator:
         divisor = len(ciphertexts)
         # Multiply by reciprocal (1/divisor) for CKKS; this leaves the scale unchanged.
         return total * (1.0 / divisor)
+
+
+    def weighted_sum(self, ciphertexts: List['PyCtxt'], weights: List[float]) -> 'PyCtxt':
+        """
+        Homomorphically compute a weighted sum of ciphertexts.
+
+        Each ciphertext is multiplied by a corresponding plaintext weight and
+        the products are summed. This requires a homomorphic multiplication
+        of ciphertext by a plaintext constant (supported for CKKS and BFV schemes).
+
+        :param ciphertexts: list of ciphertext objects to be weighted.
+        :param weights: list of plaintext weights (same length as ciphertexts).
+        :return: ciphertext representing the weighted sum.
+        """
+        if len(ciphertexts) != len(weights):
+            raise ValueError("ciphertexts and weights must be the same length")
+        # Multiply first ciphertext by its weight to initialize result
+        result = ciphertexts[0] * weights[0]
+        # Accumulate weighted ciphertexts
+        for ctxt, w in zip(ciphertexts[1:], weights[1:]):
+            result += ctxt * w
+        return result
