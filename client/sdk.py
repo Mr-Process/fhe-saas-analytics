@@ -17,36 +17,8 @@ SDK is a conceptual reference and may require further tuning for production.
 from typing import List, Any
 
 try:
-    # Pyfhel is a Python wrapper around the Microsoft SEAL library.  Importing
-def encrypt_fixed_point(self, values: List[float], scale_factor: int = 10000) -> List['PyCtxt']:
-        """
-        Encrypt a list of real numbers as fixed-point integers.
-
-        This helper multiplies each value by a scale factor and converts to
-        an integer before encryption. For CKKS scheme the scale factor is ignored
-        and fractional encryption is used.
-        """
-        if self.he.is_scheme("CKKS"):
-            return [self.he.encryptFrac([v]) for v in values]
-        # BFV scheme: scale values and encrypt as integers
-        scaled_ints = [int(round(v * scale_factor)) for v in values]
-        return [self.he.encryptInt(val) for val in scaled_ints]
-
-    def decrypt_fixed_point(self, ciphertexts: List['PyCtxt'], scale_factor: int = 10000) -> List[float]:
-        """
-        Decrypt fixed-point ciphertexts back to floats.
-
-        For CKKS scheme returns decrypted fractional values.
-        """
-        if self.he.is_scheme("CKKS"):
-            return [float(self.he.decryptFrac(ctxt)[0]) for ctxt in ciphertexts]
-        ints = [self.he.decryptInt(ctxt) for ctxt in ciphertexts]
-        return [val / scale_factor for val in ints]
-
-    # it here allows clients to call FHEClient only when the dependency is
-    # available. When Pyfhel is not installed, the module still loads but
-    # FHEClient will raise at runtime.
-    from Pyfhel import Pyfhel, PyCtxt
+    # Import Pyfhel if available.
+    from Pyfhel import Pyfhel, PyCtxt  # type: ignore
 except ImportError:
     Pyfhel = None  # type: ignore
     PyCtxt = Any   # type: ignore
@@ -58,7 +30,7 @@ class FHEClient:
 
     The client is responsible for creating the encryption context, generating
     keys, encrypting plaintext values, and decrypting results returned by the
-    server.  It never shares its secret key with the server.
+    server. It never shares its secret key with the server.
     """
 
     def __init__(self, scheme: str = "CKKS", n: int = 2**14, scale: int = 2**30) -> None:
@@ -74,19 +46,17 @@ class FHEClient:
                 "Pyfhel is required for FHEClient. Install it via pip (e.g. pip install pyfhel)."
             )
         self.he = Pyfhel()
-        # Initialize context parameters depending on scheme.  For CKKS we set
-        # the modulus sizes for the coefficient modulus (qi_sizes) and the
-        # scaling factor.  For BFV we choose a plaintext modulus p.
+        # Initialize context parameters depending on scheme.
         if scheme.upper() == "CKKS":
             self.he.contextGen(scheme="CKKS", n=n, scale=scale, qi_sizes=[60, 40, 40, 60])
         elif scheme.upper() == "BFV":
             self.he.contextGen(p=65537, m=n, sec=128)
         else:
             raise ValueError("Unsupported scheme. Use 'CKKS' or 'BFV'.")
-        # Generate secret key, public key, relinearization and rotation keys by default
+        # Generate secret key, public key, relinearization and rotation keys.
         self.he.keyGen()
 
-    def encrypt_list(self, values: List[float]) -> List['PyCtxt']:
+    def encrypt_list(self, values: List[float]) -> List["PyCtxt"]:
         """
         Encrypt a list of numeric values.
 
@@ -98,7 +68,7 @@ class FHEClient:
         else:
             return [self.he.encryptInt(int(v)) for v in values]
 
-    def decrypt_list(self, ciphertexts: List['PyCtxt']) -> List[float]:
+    def decrypt_list(self, ciphertexts: List["PyCtxt"]) -> List[float]:
         """
         Decrypt a list of ciphertexts.
 
@@ -110,7 +80,38 @@ class FHEClient:
         else:
             return [float(self.he.decryptInt(ctxt)) for ctxt in ciphertexts]
 
-    def serialize_ciphertexts(self, ciphertexts: List['PyCtxt']) -> List[bytes]:
+    def encrypt_fixed_point(self, values: List[float], scale_factor: int = 10000) -> List["PyCtxt"]:
+        """
+        Encrypt a list of real numbers as fixed-point integers.
+
+        This helper multiplies each value by a scale factor and converts to an integer before encryption.
+        For the CKKS scheme, the scale factor is ignored and fractional encryption is used.
+        :param values: list of real numbers to encrypt
+        :param scale_factor: scaling factor used for fixed-point conversion
+        :return: list of ciphertexts representing the scaled integers
+        """
+        if self.he.is_scheme("CKKS"):
+            # Use fractional encryption for CKKS
+            return [self.he.encryptFrac([v]) for v in values]
+        # BFV scheme: scale values and encrypt as integers
+        scaled_ints = [int(round(v * scale_factor)) for v in values]
+        return [self.he.encryptInt(val) for val in scaled_ints]
+
+    def decrypt_fixed_point(self, ciphertexts: List["PyCtxt"], scale_factor: int = 10000) -> List[float]:
+        """
+        Decrypt fixed-point ciphertexts back to floats.
+
+        For CKKS scheme returns decrypted fractional values.
+        :param ciphertexts: list of ciphertexts to decrypt
+        :param scale_factor: scaling factor used during encryption
+        :return: list of floating-point numbers reconstructed from ciphertexts
+        """
+        if self.he.is_scheme("CKKS"):
+            return [float(self.he.decryptFrac(ctxt)[0]) for ctxt in ciphertexts]
+        ints = [self.he.decryptInt(ctxt) for ctxt in ciphertexts]
+        return [val / scale_factor for val in ints]
+
+    def serialize_ciphertexts(self, ciphertexts: List["PyCtxt"]) -> List[bytes]:
         """
         Serialize ciphertexts into bytes for transmission to the server.
 
@@ -119,7 +120,7 @@ class FHEClient:
         """
         return [ctxt.to_bytes() for ctxt in ciphertexts]
 
-    def deserialize_ciphertexts(self, data: List[bytes]) -> List['PyCtxt']:
+    def deserialize_ciphertexts(self, data: List[bytes]) -> List["PyCtxt"]:
         """
         Deserialize bytes back into ciphertext objects.
 
