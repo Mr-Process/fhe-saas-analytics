@@ -1,6 +1,5 @@
 """
-Flask API for the FHE-SaaS-Analytics service.
-
+Flask API for FHE-SaaS-Analytics using a pluggable backend.
 This module exposes a REST endpoint for computing a weighted sum on
 encrypted inputs. Clients submit base64-encoded ciphertexts and
 plaintext weights; the server performs the homomorphic computation
@@ -10,57 +9,40 @@ never has access to plaintext data or secret keys.
 
 from flask import Flask, request, jsonify
 import base64
+import os
 
-from client.sdk import FHEClient
-from server.evaluator import FHEEvaluator
+from plugins import get_backend
 
-# Default encryption parameters used by both client and server.
-CONTEXT_PARAMS = {"scheme": "CKKS", "n": 2**14, "scale": 2**30}
+# Select backend via environment variable or default to Pyfhel
+BACKEND_NAME = os.getenv("FHE_BACKEND", "pyfhel")
+backend = get_backend(BACKEND_NAME)
 
 app = Flask(__name__)
 
 def _deserialize_ciphertexts(encoded_list):
-    """Convert a list of base64 strings into raw byte strings."""
-    return [base64.b64decode(s) for s in encoded_list]
+    """Decode base64 strings and deserialize using the backend."""
+    enc_bytes = [base64.b64decode(s) for s in encoded_list]
+    return backend.deserialize_ciphertexts(enc_bytes)
 
-def _serialize_ciphertext(ctxt_bytes: bytes) -> str:
-    """Convert raw ciphertext bytes into a base64-encoded string."""
-    return base64.b64encode(ctxt_bytes).decode("utf-8")
+def _serialize_ciphertext(ctxt):
+    """Serialize ciphertext using backend and encode as base64 string."""
+    # backend.serialize_ciphertexts expects a list of ciphertexts and returns list of bytes
+    enc_bytes_list = backend.serialize_ciphertexts([ctxt])
+    return base64.b64encode(enc_bytes_list[0]).decode("utf-8")
 
 @app.route("/compute-weighted", methods=["POST"])
 def compute_weighted():
-    """Compute a weighted sum on encrypted inputs.
-
-    Expects a JSON payload with two fields:
-      - "ciphertexts": list of base64 strings representing encrypted values
-      - "weights": list of numbers (same length as ciphertexts)
-
-    Returns a JSON object with a single field:
-      - "ciphertext": base64 string of the encrypted weighted sum
-    """
-    payload = request.get_json(force=True)
-    enc_inputs_b64 = payload.get("ciphertexts")
-    weights = payload.get("weights")
-
-    if not isinstance(enc_inputs_b64, list) or not isinstance(weights, list):
-        return jsonify({"error": "ciphertexts and weights must be lists"}), 400
-    if len(enc_inputs_b64) != len(weights):
-        return jsonify({"error": "ciphertexts and weights must be the same length"}), 400
-
-    # Deserialize ciphertexts
-    enc_bytes = _deserialize_ciphertexts(enc_inputs_b64)
-    evaluator = FHEEvaluator(CONTEXT_PARAMS)
-    enc_values = evaluator.deserialize_ciphertexts(enc_bytes)
-
-    # Perform homomorphic weighted sum
-    result_ctxt = evaluator.weighted_sum(enc_values, weights)
-
-    # Serialize result back to client
-    result_bytes = evaluator.serialize_ciphertexts([result_ctxt])[0]
-    result_b64 = _serialize_ciphertext(result_bytes)
-    return jsonify({"ciphertext": result_b64})
-
-
-if __name__ == "__main__":
-    # Run the API for local testing. In production, use a proper WSGI server.
-    app.run(host="0.0.0.0", port=8000)
+    """Compute a weighted sum on encrypted inputs using the selected backend."""
+    data = request.get_json()
+    ciphertexts_b64 = data.get("ciphertexts")
+    weights = data.get("weights")
+    # Validate inputs
+    if not isinstance(ciphertexts_b64, list) or not isinstance(weights, list) or len(ciphertexts_b64) != len(weights):
+        return jsonify({"error": "Invalid input lengths"}), 400
+    try:
+        ctxts = _deserialize_ciphertexts(ciphertexts_b64)
+        result_ctxt = backend.weighted_sum(ctxts, weights)
+        result_b64 = _serialize_ciphertext(result_ctxt)
+        return jsonify({"encrypted_result": result_b64})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
