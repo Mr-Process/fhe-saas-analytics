@@ -16,6 +16,20 @@ This guide explains how to set up the project locally and interact with the encr
 3. **Run the API server** (development mode):
    ```bash
    python server/api.py
+### Selecting a backend
+
+The service now supports a pluggable FHE backend architecture. By default it uses the **Pyfhel** library, but you can switch to another supported backend by setting the `FHE_BACKEND` environment variable before starting the server.
+
+For example, to run the server with the default backend:
+
+```
+bash
+export FHE_BACKEND=pyfhel
+python server/api.py
+```
+
+When additional backends are added to the `plugins` package, set `FHE_BACKEND` to the corresponding key (see `plugins/__init__.py`) to select that implementation.
+
    ```
    The server will start on `http://0.0.0.0:8000`. In production you should serve the `app` object in `server/api.py` with a proper WSGI server such as Gunicorn or uWSGI.
 
